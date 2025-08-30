@@ -58,13 +58,59 @@
   .reply-box { margin-top:8px; display:none; }
   .reactions { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
   .react { border:1px solid #2b2f44; background:#0f1120; border-radius:999px; padding:6px 10px; font-size:13px; cursor:pointer; }
+</style>
   .react[disabled] { opacity:.6; cursor:not-allowed; }
+
+  /* --- Mobile & small screens responsiveness --- */
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .card {
+      width: 100vw;
+      max-width: 100vw;
+      border-radius: 0;
+      padding: 16px;
+    }
+    h1 { font-size: 20px; margin-bottom: 6px; }
+    .sub { font-size: 13px; margin-bottom: 10px; }
+
+    /* Stack fields vertically */
+    form { gap: 6px; }
+    input[name="sender"] { flex: 1 1 100%; }
+    textarea { flex: 1 1 100%; min-height: 110px; }
+
+    /* Unlock row stacks nicely */
+    #unlockRow { gap: 6px; }
+    #unlockRow input { flex: 1 1 100%; }
+    #unlockRow button { flex: 0 0 auto; }
+
+    /* Actions bar compact */
+    .actions-bar {
+      width: 100%;
+      gap: 6px;
+      justify-content: flex-start;
+    }
+    .file-name { display: none; } /* save space on mobile */
+    .file-btn, .actions-bar button { padding: 10px 12px; }
+
+    /* Message spacing */
+    .msg { padding: 10px 10px; }
+    .meta { font-size: 12px; }
+    .thread { margin-left: 10px; padding-left: 10px; }
+
+    /* Reactions: larger tap targets */
+    .react { padding: 8px 12px; font-size: 16px; }
+    .actions { gap: 6px; }
+  }
+
+  /* Prevent overflow of very long words/URLs in messages */
+  .msg > div { word-wrap: break-word; overflow-wrap: anywhere; }
+</style>
 </style>
 </head>
 <body>
   <div class="card">
     <h1>Jeanne ♥ Vik — Wall</h1>
-    <div class="sub">A tiny private wall (no login). Keep the link secret 🙂</div>
+    <div class="sub">Our space. Forever 💛</div>
 
     <!-- Unlock row (will hide after success) -->
     <div class="row" id="unlockRow">

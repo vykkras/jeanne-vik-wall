@@ -32,8 +32,18 @@
   .msg { padding:10px 12px; border:1px solid #24283b; border-radius:12px; margin:8px 0; background:#121425; }
   .meta { color:#9aa0b5; font-size:11px; margin-top:6px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
   .meta time { opacity:.9; }
-  .imgwrap { margin-top:8px; }
-  .imgwrap img { max-width:100%; border-radius:10px; border:1px solid #24283b; display:block; }
+  .imgwrap { margin-top:8px; display:flex; justify-content:center; }
+  .imgwrap img {
+    display:block;
+    width:100%;
+    max-width:560px;   /* cap like an IG post */
+    max-height:70vh;   /* never exceed viewport height too much */
+    object-fit:contain;
+    border-radius:10px;
+    border:1px solid #24283b;
+  }
+  /* Replies: slightly smaller media */
+  .thread .imgwrap img { max-width:420px; }
   .danger { background:#2b0f14; border-color:#4a1b21; }
   .danger:hover { filter:brightness(1.1); }
   .pill { padding:6px 10px; border-radius:999px; font-size:12px; }
@@ -95,6 +105,7 @@
     .msg { padding: 10px 10px; }
     .meta { font-size: 12px; }
     .thread { margin-left: 10px; padding-left: 10px; }
+    .thread .imgwrap img { max-width:100%; } /* on phones, use full width */
 
     /* Reactions: larger tap targets */
     .react { padding: 8px 12px; font-size: 16px; }
@@ -108,7 +119,7 @@
 <body>
   <div class="card">
     <h1>Jeanne ♥ Vik — Wall</h1>
-    <div class="sub">Our space. Forever 💛</div>
+    <div class="sub"> Forever 💛</div>
 
     <!-- Unlock row (will hide after success) -->
     <div class="row" id="unlockRow">
@@ -421,6 +432,12 @@
   }
 
   function escapeHTML(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
+
+  // Click any image to open it full-size in a new tab
+  document.addEventListener('click', (e) => {
+    const img = e.target && e.target.closest('.imgwrap img');
+    if (img) { window.open(img.src, '_blank', 'noopener'); }
+  });
 
   // realtime auto-refresh
   sb.channel('messages-rt')

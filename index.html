@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Jeanne ♥ Vik — Wall</title>
+<style>
+  :root { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+  body { margin:0; background:#0f0f14; color:#f6f7fb; min-height:100dvh; display:grid; place-items:center; padding:24px; }
+  .card {
+    width: min(1200px, 96vw);
+    background:#161823;
+    border:1px solid #26293a;
+    border-radius:16px;
+    padding:24px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  h1 { margin:0 0 8px; font-size:24px; }
+  .sub { color:#9aa0b5; margin-bottom:14px; }
+  form { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  input, textarea, button { border-radius:10px; border:1px solid #2b2f44; background:#0f1120; color:#f6f7fb; }
+  input, textarea { padding:10px; }
+  input[name="sender"] { flex:0 0 180px; }
+  textarea { flex:1 1 520px; min-height:72px; resize:vertical; }
+  @media (min-width: 1600px) {
+    .card { width: min(1400px, 94vw); }
+    textarea { min-height: 110px; }
+  }
+  input[type="file"] { flex:1 0 auto; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+  button { padding:10px 14px; cursor:pointer; }
+  .msg { padding:10px 12px; border:1px solid #24283b; border-radius:12px; margin:8px 0; background:#121425; }
+  .meta { color:#9aa0b5; font-size:11px; margin-top:6px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .meta time { opacity:.9; }
+  .imgwrap { margin-top:8px; }
+  .imgwrap img { max-width:100%; border-radius:10px; border:1px solid #24283b; display:block; }
+  .danger { background:#2b0f14; border-color:#4a1b21; }
+  .danger:hover { filter:brightness(1.1); }
+  .pill { padding:6px 10px; border-radius:999px; font-size:12px; }
+
+  /* Composer actions row */
+  .actions-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .file-name { color:#9aa0b5; font-size:11px; }
+
+  /* Compact tweaks */
+  input, textarea, button { font-size:14px; padding:8px; }
+  .msg { padding:10px 12px; margin:8px 0; }
+  .meta { font-size:11px; }
+  .row { margin-bottom:8px; }
+  /* File input -> button style */
+  .file-hidden { display:none; }
+  .file-btn { border:1px solid #2b2f44; background:#0f1120; color:#f6f7fb; cursor:pointer; }
+  .file-btn:hover { filter:brightness(1.05); }
+
+  /* Replies (threads) + reactions */
+  .thread { margin-left:16px; border-left:1px dashed #2b2f44; padding-left:12px; }
+  .actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px; }
+  .reply-box { margin-top:8px; display:none; }
+  .reactions { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .react { border:1px solid #2b2f44; background:#0f1120; border-radius:999px; padding:6px 10px; font-size:13px; cursor:pointer; }
+  .react[disabled] { opacity:.6; cursor:not-allowed; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Jeanne ♥ Vik — Wall</h1>
+    <div class="sub">A tiny private wall (no login). Keep the link secret 🙂</div>
+
+    <!-- Unlock row (will hide after success) -->
+    <div class="row" id="unlockRow">
+      <input id="pass" placeholder="Passcode" />
+      <button id="savePass" class="pill">Unlock</button>
+      <span id="lockState" class="sub"></span>
+    </div>
+
+    <form id="form">
+      <input name="sender" placeholder="Name (Jeanne / Vik)" />
+      <textarea name="text" placeholder="Write something sweet…"></textarea>
+      <div class="actions-bar">
+        <input id="file" name="file" type="file" accept="image/*" class="file-hidden" />
+        <label for="file" class="pill file-btn">Add photo</label>
+        <span id="fileName" class="file-name"></span>
+        <button type="submit">Post</button>
+      </div>
+    </form>
+
+    <div id="list"></div>
+  </div>
+
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script>
+  // NOTE: Reactions use RPC 'inc_reaction'. Ensure you've created it in Supabase (see assistant instructions).
+
+  /*
+   * Ensure these are set in Supabase (run once):
+   * - Columns: parent_id uuid references messages(id) on delete cascade,
+   *            coeur_count int default 0, rire_count int default 0,
+   *            amour_count int default 0, pouce_count int default 0
+   * - Policies: read_all / insert_all / update_all / delete_all to anon
+   * - RPC: inc_reaction(msg_id uuid, kind text) with SECURITY DEFINER
+   * - Realtime: messages table added to supabase_realtime publication
+   */
+
+  // ====== YOUR SETTINGS ======
+  const SUPABASE_URL = "https://rjxvyumhqbdoqbriziie.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqeHZ5dW1ocWJkb3Ficml6aWllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0NzkyMjEsImV4cCI6MjA3MjA1NTIyMX0.6-dANDXm3d2HOsTffFpOcAbEFf_HHIZ73wqV8M0wIgw";
+  const BUCKET = "photos";
+  const PASSCODE = "amorSansa"; // shared secret for post/delete
+  // ===========================
+
+  const { createClient } = supabase;
+  const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const form       = document.getElementById('form');
+  const list       = document.getElementById('list');
+  const passInput  = document.getElementById('pass');
+  const savePassBtn= document.getElementById('savePass');
+  const lockState  = document.getElementById('lockState');
+  const unlockRow  = document.getElementById('unlockRow');
+
+  // Session-scoped unlock (resets when tab is closed)
+  const UNLOCK_FLAG = 'jv_unlocked';
+
+  function isUnlocked() {
+    return sessionStorage.getItem(UNLOCK_FLAG) === '1';
+  }
+
+  function applyUnlockedUI() {
+    if (isUnlocked()) {
+      // hide unlock row and move everything up
+      unlockRow.style.display = 'none';
+      // clear pass field just in case
+      passInput.value = '';
+    } else {
+      unlockRow.style.display = '';
+      lockState.textContent = 'Locked (read-only)';
+    }
+    // Re-render so delete buttons appear/disappear correctly
+    render(_cache || []);
+  }
+
+  // Handle unlock
+  savePassBtn.onclick = tryUnlock;
+  passInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryUnlock(); });
+
+  function tryUnlock() {
+    const typed = (passInput.value || '').trim();
+    if (typed === PASSCODE) {
+      sessionStorage.setItem(UNLOCK_FLAG, '1');
+      applyUnlockedUI();
+      // focus first input after unlocking
+      form.sender && form.sender.focus();
+    } else {
+      lockState.textContent = 'Wrong passcode';
+      setTimeout(()=> lockState.textContent = 'Locked (read-only)', 1200);
+    }
+  }
+
+  // Show selected file name in composer
+  const fileInput = document.getElementById('file');
+  const fileNameEl = document.getElementById('fileName');
+  if (fileInput && fileNameEl) {
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files && fileInput.files[0];
+      fileNameEl.textContent = f ? f.name : '';
+    });
+  }
+
+  // Create a message (root or reply)
+  async function createMessage({ sender, text, file, parent_id = null }) {
+    let image_url = null;
+    if (file) {
+      const ext  = (file.name.split('.').pop() || "jpg").toLowerCase();
+      const path = `${crypto.randomUUID()}.${ext}`;
+      const { error: upErr } = await sb.storage.from(BUCKET).upload(path, file, { upsert:false });
+      if (upErr) { throw new Error("Upload failed: " + upErr.message); }
+      const { data: pub } = sb.storage.from(BUCKET).getPublicUrl(path);
+      image_url = pub.publicUrl;
+    }
+    const { error: insErr } = await sb.from('messages').insert({ sender, text, image_url, parent_id });
+    if (insErr) { throw new Error("Save failed: " + insErr.message); }
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!isUnlocked()) { alert("Enter the correct passcode to post."); return; }
+
+    const sender = form.sender.value.trim();
+    const text   = form.text.value.trim();
+    const file   = form.file.files[0] || null;
+    if (!sender && !text && !file) return;
+
+    try {
+      await createMessage({ sender, text, file, parent_id: null });
+      form.text.value = '';
+      form.file.value = '';
+      await load();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  let _cache = [];
+  async function load() {
+    const { data, error } = await sb
+      .from('messages')
+      .select('*')
+      .order('created_at', { ascending: true }) // oldest first for thread building
+      .limit(500);
+    if (error) { console.error(error); return; }
+    _cache = data || [];
+    render(_cache);
+  }
+
+  function render(items) {
+    list.innerHTML = '';
+
+    // group by parent_id
+    const byParent = {};
+    for (const m of items) {
+      const key = m.parent_id || 'root';
+      (byParent[key] ||= []).push(m);
+    }
+
+    // sort roots newest first; children oldest first
+    const roots = (byParent['root'] || []).sort((a,b)=> b.created_at.localeCompare(a.created_at));
+    const sortChildren = (arr) => arr.sort((a,b)=> a.created_at.localeCompare(b.created_at));
+
+    const renderList = (arr, container) => {
+      for (const m of arr) {
+        const el = renderMessage(m);
+        container.appendChild(el);
+
+        const kids = byParent[m.id] ? sortChildren(byParent[m.id]) : [];
+        if (kids.length) {
+          const t = document.createElement('div');
+          t.className = 'thread';
+          renderList(kids, t);
+          container.appendChild(t);
+        }
+      }
+    };
+
+    renderList(roots, list);
+  }
+
+  function renderMessage(m) {
+    const div = document.createElement('div');
+    div.className = 'msg';
+
+    const dt = new Date(m.created_at);
+    const stamp = dt.toLocaleString(undefined, { dateStyle:'medium', timeStyle:'short' });
+
+    const canAct = isUnlocked();
+
+    const delBtn = canAct
+      ? `<button class="pill danger" data-act="del" data-id="${m.id}" data-img="${m.image_url || ''}">Delete</button>`
+      : ``;
+
+    const reactDisabled = canAct ? '' : 'disabled';
+
+    // defaults for counts (in case columns aren't present yet)
+    const hearts = m.coeur_count ?? 0;
+    const laughs = m.rire_count ?? 0;
+    const loves  = m.amour_count ?? 0;
+    const thumbs = m.pouce_count ?? 0;
+
+    div.innerHTML = `
+      <div>${escapeHTML(m.text || '').replace(/\n/g,'<br/>')}</div>
+      ${m.image_url ? `<div class="imgwrap"><img src="${m.image_url}" alt="" loading="lazy"></div>` : ``}
+      <div class="meta">
+        — ${escapeHTML(m.sender || 'Anonymous')} • <time>${stamp}</time>
+        <span style="flex:1"></span>
+        ${delBtn}
+      </div>
+
+      <div class="actions">
+        ${canAct ? `<button class="pill" data-act="toggle-reply" data-id="${m.id}">Reply</button>` : ``}
+        <div class="reactions">
+          <button class="react" data-act="react" data-kind="coeur" data-id="${m.id}" ${reactDisabled}>💛 ${hearts}</button>
+          <button class="react" data-act="react" data-kind="rire"  data-id="${m.id}" ${reactDisabled}>😹 ${laughs}</button>
+          <button class="react" data-act="react" data-kind="amour" data-id="${m.id}" ${reactDisabled}>😻 ${loves}</button>
+          <button class="react" data-act="react" data-kind="pouce" data-id="${m.id}" ${reactDisabled}>😿 ${thumbs}</button>
+        </div>
+      </div>
+
+      <div class="reply-box" id="rb-${m.id}">
+        <div class="row" style="margin-top:8px">
+          <input name="r-sender-${m.id}" placeholder="Name" />
+          <input id="rf-${m.id}" name="r-file-${m.id}" type="file" accept="image/*" class="file-hidden" />
+          <label for="rf-${m.id}" class="pill file-btn">Add photo</label>
+        </div>
+        <textarea name="r-text-${m.id}" placeholder="Write a reply…"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="pill" data-act="send-reply" data-id="${m.id}">Post reply</button>
+          <button class="pill danger" data-act="cancel-reply" data-id="${m.id}">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    // wire actions
+    div.querySelectorAll('[data-act]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const act = btn.getAttribute('data-act');
+        const id  = btn.getAttribute('data-id');
+
+        if (act === 'toggle-reply') {
+          const box = div.querySelector('#rb-' + id);
+          box.style.display = (box.style.display === 'none' || box.style.display === '') ? 'block' : 'none';
+          return;
+        }
+
+        if (act === 'send-reply') {
+          if (!isUnlocked()) { alert("Enter the correct passcode to reply."); return; }
+          const nameInput = div.querySelector(`input[name="r-sender-${id}"]`);
+          const fileInput = div.querySelector(`input[name="r-file-${id}"]`);
+          const textArea  = div.querySelector(`textarea[name="r-text-${id}"]`);
+          const sender = (nameInput.value||'').trim();
+          const text   = (textArea.value||'').trim();
+          const file   = fileInput.files[0] || null;
+          if (!sender && !text && !file) return;
+          try {
+            await createMessage({ sender, text, file, parent_id: id });
+            nameInput.value = ''; textArea.value = ''; fileInput.value = '';
+            await load();
+          } catch (err) { alert("Reply failed: " + err.message); }
+          return;
+        }
+
+        if (act === 'cancel-reply') {
+          const box = div.querySelector('#rb-' + id);
+          if (box) box.style.display = 'none';
+          return;
+        }
+
+        if (act === 'react') {
+          if (!isUnlocked()) { alert("Unlock to react."); return; }
+          const kind = btn.getAttribute('data-kind');
+          const { error } = await sb.rpc('inc_reaction', { msg_id: id, kind });
+          if (error) { alert("Reaction failed: " + error.message); }
+          else { await load(); }
+          return;
+        }
+
+        if (act === 'del') {
+          if (!isUnlocked()) { alert("Enter the correct passcode to delete."); return; }
+          if (!confirm("Delete this post? (replies will be deleted too)")) return;
+
+          const img = btn.getAttribute('data-img') || '';
+          const { error: delErr } = await sb.from('messages').delete().eq('id', id);
+          if (delErr) { alert("Delete failed (DB): " + delErr.message); return; }
+
+          if (img) {
+            const path = extractStoragePath(img);
+            if (path) {
+              await sb.storage.from(BUCKET).remove([path.split(`${BUCKET}/`)[1]]).catch(()=>{});
+            }
+          }
+          await load();
+          return;
+        }
+      });
+    });
+
+    // hide reply area by default
+    const rb = div.querySelector('#rb-' + m.id);
+    rb.style.display = 'none';
+
+    return div;
+  }
+
+  // Convert a public URL to bucket path, e.g. .../object/public/photos/abc.jpg -> photos/abc.jpg
+  function extractStoragePath(url) {
+    const marker = "/object/public/";
+    const i = url.indexOf(marker);
+    return i === -1 ? null : url.slice(i + marker.length);
+  }
+
+  function escapeHTML(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
+
+  // realtime auto-refresh
+  sb.channel('messages-rt')
+    .on('postgres_changes',{ event:'*', schema:'public', table:'messages' }, load)
+    .subscribe();
+
+  // initial state
+  if (isUnlocked()) unlockRow.style.display = 'none';
+  else lockState.textContent = 'Locked (read-only)';
+  load();
+  </script>
+</body>
+</html>

@@ -70,6 +70,10 @@
   .react { border:1px solid #2b2f44; background:#0f1120; border-radius:999px; padding:6px 10px; font-size:13px; cursor:pointer; }
   .react[disabled] { opacity:.6; cursor:not-allowed; }
 
+  /* Replies toggle */
+.toggle-replies { border:1px solid #2b2f44; background:#0f1120; border-radius:999px; padding:6px 10px; font-size:12px; cursor:pointer; }
+.toggle-replies:hover { filter:brightness(1.05); }
+
   /* --- Mobile & small screens responsiveness --- */
   @media (max-width: 640px) {
     body { padding: 12px; }
@@ -175,6 +179,21 @@
 
   // Session-scoped unlock (resets when tab is closed)
   const UNLOCK_FLAG = 'jv_unlocked';
+  // Persist which threads are collapsed (per device)
+const COLLAPSED_KEY = 'jv_collapsed_threads';
+function getCollapsedSet() {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function saveCollapsedSet(set) {
+  localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...set]));
+}
+const _collapsed = getCollapsedSet();
+function isCollapsed(id){ return _collapsed.has(id); }
+function setCollapsed(id, val){
+  if (val) _collapsed.add(id); else _collapsed.delete(id);
+  saveCollapsedSet(_collapsed);
+}
 
   function isUnlocked() {
     return sessionStorage.getItem(UNLOCK_FLAG) === '1';
@@ -268,36 +287,60 @@
   }
 
   function render(items) {
-    list.innerHTML = '';
+  list.innerHTML = '';
 
-    // group by parent_id
-    const byParent = {};
-    for (const m of items) {
-      const key = m.parent_id || 'root';
-      (byParent[key] ||= []).push(m);
-    }
+  // group by parent_id
+  const byParent = {};
+  for (const m of items) {
+    const key = m.parent_id || 'root';
+    (byParent[key] ||= []).push(m);
+  }
 
-    // sort roots newest first; children oldest first
-    const roots = (byParent['root'] || []).sort((a,b)=> b.created_at.localeCompare(a.created_at));
-    const sortChildren = (arr) => arr.sort((a,b)=> a.created_at.localeCompare(b.created_at));
+  // sort roots newest first; children oldest first
+  const roots = (byParent['root'] || []).sort((a,b)=> b.created_at.localeCompare(a.created_at));
+  const sortChildren = (arr) => arr.sort((a,b)=> a.created_at.localeCompare(b.created_at));
 
-    const renderList = (arr, container) => {
-      for (const m of arr) {
-        const el = renderMessage(m);
-        container.appendChild(el);
+  const renderList = (arr, container) => {
+    for (const m of arr) {
+      const el = renderMessage(m);
+      container.appendChild(el);
+    
+      const kids = byParent[m.id] ? sortChildren(byParent[m.id]) : [];
+      if (kids.length) {
+        if (!isCollapsed(m.id)) setCollapsed(m.id, true); // collapse by default
+        // Thread container for children
+        const thread = document.createElement('div');
+        thread.className = 'thread';
+        thread.id = `thread-${m.id}`;
+        renderList(kids, thread);
+        container.appendChild(thread);
 
-        const kids = byParent[m.id] ? sortChildren(byParent[m.id]) : [];
-        if (kids.length) {
-          const t = document.createElement('div');
-          t.className = 'thread';
-          renderList(kids, t);
-          container.appendChild(t);
+        // Add/augment a toggle button in the actions row
+        const actions = el.querySelector('.actions');
+        if (actions) {
+          const tgl = document.createElement('button');
+          tgl.className = 'toggle-replies';
+          const updateLabel = () => {
+            tgl.textContent = isCollapsed(m.id) ? `Show ${kids.length} repl${kids.length>1?'ies':'y'}` : `Hide repl${kids.length>1?'ies':'y'}`;
+          };
+          updateLabel();
+          // Initial state
+          thread.style.display = isCollapsed(m.id) ? 'none' : '';
+
+          tgl.addEventListener('click', () => {
+            const willCollapse = thread.style.display !== 'none';
+            thread.style.display = willCollapse ? 'none' : '';
+            setCollapsed(m.id, willCollapse);
+            updateLabel();
+          });
+          actions.prepend(tgl); // put it before Reply/emoji
         }
       }
-    };
+    }
+  };
 
-    renderList(roots, list);
-  }
+  renderList(roots, list);
+}
 
   function renderMessage(m) {
     const div = document.createElement('div');
